@@ -444,7 +444,7 @@ function selectFeature(fname) {
   const fdata = S.data?.folds?.[S.fold]?.[fname];
   if (!fdata) { renderPlaceholder('No data for this fold'); return; }
 
-  document.getElementById('placeholder').style.display = 'none';
+  const ph = document.getElementById('placeholder'); if (ph) ph.style.display = 'none';
 
   const panel = document.getElementById('main-panel');
   panel.innerHTML = buildPanel(fname, fdata);
