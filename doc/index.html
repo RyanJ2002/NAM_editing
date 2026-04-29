@@ -1,0 +1,1066 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NAM-LSS Calibration Editor</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+
+        :root {
+            --bg: #0d0f14;
+            --surface: #151820;
+            --surface2: #1c2030;
+            --border: #252a38;
+            --border2: #2f3648;
+            --text: #e2e8f0;
+            --muted: #6b7794;
+            --accent: #4fc3f7;
+            --accent2: #81d4fa;
+            --pos: #4ade80;
+            --neg: #f87171;
+            --warn: #fbbf24;
+            --mono: 'IBM Plex Mono', monospace;
+            --sans: 'IBM Plex Sans', sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--sans);
+            font-size: 14px;
+            min-height: 100vh;
+        }
+
+        /* ── Header ── */
+        header {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 0 24px;
+            height: 52px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .logo {
+            font-family: var(--mono);
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: .08em;
+            color: var(--accent);
+        }
+
+        .logo span {
+            color: var(--muted);
+            font-weight: 400;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        /* ── Buttons ── */
+        .btn {
+            font-family: var(--mono);
+            font-size: 12px;
+            font-weight: 500;
+            padding: 6px 14px;
+            border-radius: 4px;
+            border: 1px solid var(--border2);
+            background: var(--surface2);
+            color: var(--text);
+            cursor: pointer;
+            transition: all .15s;
+            letter-spacing: .04em;
+        }
+
+        .btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: #000;
+            border-color: var(--accent);
+            font-weight: 600;
+        }
+
+        .btn-primary:hover {
+            background: var(--accent2);
+            border-color: var(--accent2);
+            color: #000;
+        }
+
+        .btn-danger {
+            border-color: var(--neg);
+            color: var(--neg);
+        }
+
+        .btn-danger:hover {
+            background: var(--neg);
+            color: #000;
+        }
+
+        /* ── Layout ── */
+        .layout {
+            display: grid;
+            grid-template-columns: 220px 1fr;
+            min-height: calc(100vh - 52px);
+        }
+
+        /* ── Sidebar ── */
+        .sidebar {
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            padding: 16px 0;
+            overflow-y: auto;
+        }
+
+        .sidebar-section {
+            padding: 0 16px 8px;
+            font-family: var(--mono);
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: .12em;
+            color: var(--muted);
+            text-transform: uppercase;
+            margin-top: 16px;
+        }
+
+        .sidebar-section:first-child {
+            margin-top: 0;
+        }
+
+        .feat-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 7px 16px;
+            cursor: pointer;
+            border-left: 2px solid transparent;
+            transition: all .12s;
+            font-size: 13px;
+        }
+
+        .feat-item:hover {
+            background: var(--surface2);
+        }
+
+        .feat-item.active {
+            border-left-color: var(--accent);
+            background: var(--surface2);
+            color: var(--accent);
+        }
+
+        .feat-badge {
+            font-family: var(--mono);
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 10px;
+            background: var(--surface2);
+        }
+
+        .feat-badge.modified {
+            background: rgba(79, 195, 247, .15);
+            color: var(--accent);
+        }
+
+        /* ── Main Panel ── */
+        .main {
+            padding: 24px;
+            overflow-y: auto;
+        }
+
+        .panel-title {
+            font-family: var(--mono);
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-bottom: 16px;
+        }
+
+        /* ── Tabs ── */
+        .tabs {
+            display: flex;
+            gap: 0;
+            margin-bottom: 24px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .tab {
+            font-family: var(--mono);
+            font-size: 12px;
+            padding: 10px 20px;
+            cursor: pointer;
+            color: var(--muted);
+            border-bottom: 2px solid transparent;
+            margin-bottom: -1px;
+            transition: all .15s;
+            letter-spacing: .04em;
+        }
+
+        .tab:hover {
+            color: var(--text);
+        }
+
+        .tab.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+        }
+
+        /* ── Cards ── */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 20px;
+            margin-bottom: 16px;
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+
+        .card-title {
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .card-meta {
+            font-family: var(--mono);
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+        /* ── Bin Grid ── */
+        .bin-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .bin-row {
+            display: grid;
+            grid-template-columns: 120px 1fr 80px 140px 60px;
+            gap: 10px;
+            align-items: center;
+            padding: 8px 12px;
+            background: var(--surface2);
+            border-radius: 4px;
+            border: 1px solid transparent;
+            transition: border-color .12s;
+        }
+
+        .bin-row:hover {
+            border-color: var(--border2);
+        }
+
+        .bin-row.modified {
+            border-color: rgba(79, 195, 247, .3);
+        }
+
+        .bin-range {
+            font-family: var(--mono);
+            font-size: 11px;
+            color: var(--muted);
+            white-space: nowrap;
+        }
+
+        .bin-bar-wrap {
+            position: relative;
+            height: 20px;
+            background: var(--bg);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .bin-bar-base {
+            position: absolute;
+            height: 100%;
+            background: var(--border2);
+            border-radius: 2px;
+        }
+
+        .bin-bar-label {
+            position: absolute;
+            right: 4px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-family: var(--mono);
+            font-size: 10px;
+            color: var(--muted);
+        }
+
+        .bin-n {
+            font-family: var(--mono);
+            font-size: 11px;
+            color: var(--muted);
+            text-align: right;
+        }
+
+        /* Slider */
+        .slider-wrap {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 4px;
+            background: var(--border2);
+            border-radius: 2px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: var(--accent);
+            cursor: pointer;
+            transition: background .12s;
+        }
+
+        input[type=range]::-webkit-slider-thumb:hover {
+            background: var(--accent2);
+        }
+
+        .delta-val {
+            font-family: var(--mono);
+            font-size: 12px;
+            font-weight: 600;
+            min-width: 50px;
+            text-align: right;
+            transition: color .12s;
+        }
+
+        .delta-pos {
+            color: var(--pos);
+        }
+
+        .delta-neg {
+            color: var(--neg);
+        }
+
+        .delta-zero {
+            color: var(--muted);
+        }
+
+        .reset-bin {
+            background: none;
+            border: none;
+            color: var(--muted);
+            cursor: pointer;
+            font-size: 14px;
+            padding: 2px;
+            transition: color .12s;
+        }
+
+        .reset-bin:hover {
+            color: var(--neg);
+        }
+
+        /* ── Output Calibration ── */
+        .output-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .output-row {
+            display: grid;
+            grid-template-columns: 80px 80px 1fr 140px 60px 80px;
+            gap: 10px;
+            align-items: center;
+            padding: 6px 12px;
+            background: var(--surface2);
+            border-radius: 4px;
+            border: 1px solid transparent;
+            transition: border-color .12s;
+        }
+
+        .output-row.modified {
+            border-color: rgba(79, 195, 247, .3);
+        }
+
+        .output-row:hover {
+            border-color: var(--border2);
+        }
+
+        .gap-val {
+            font-family: var(--mono);
+            font-size: 11px;
+        }
+
+        .gap-pos {
+            color: var(--pos);
+        }
+
+        .gap-neg {
+            color: var(--neg);
+        }
+
+        /* ── Stats bar ── */
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .stat-box {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 14px 16px;
+        }
+
+        .stat-label {
+            font-family: var(--mono);
+            font-size: 10px;
+            color: var(--muted);
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            margin-bottom: 6px;
+        }
+
+        .stat-val {
+            font-family: var(--mono);
+            font-size: 22px;
+            font-weight: 600;
+        }
+
+        .stat-val.good {
+            color: var(--pos);
+        }
+
+        .stat-val.warn {
+            color: var(--warn);
+        }
+
+        /* ── Column headers ── */
+        .col-headers {
+            display: grid;
+            gap: 10px;
+            padding: 0 12px 6px;
+            font-family: var(--mono);
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            color: var(--muted);
+        }
+
+        .feat-col-headers {
+            grid-template-columns: 120px 1fr 80px 140px 60px;
+        }
+
+        .out-col-headers {
+            grid-template-columns: 80px 80px 1fr 140px 60px 80px;
+        }
+
+        /* ── JSON Export ── */
+        .json-box {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 16px;
+            font-family: var(--mono);
+            font-size: 11px;
+            line-height: 1.6;
+            color: #a8b4d0;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        /* ── Toast ── */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: var(--surface2);
+            border: 1px solid var(--border2);
+            border-radius: 6px;
+            padding: 12px 20px;
+            font-family: var(--mono);
+            font-size: 12px;
+            color: var(--accent);
+            transform: translateY(80px);
+            opacity: 0;
+            transition: all .25s;
+            pointer-events: none;
+            z-index: 999;
+        }
+
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+
+        /* ── Auto-cal suggestion ── */
+        .suggestion {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-family: var(--mono);
+            font-size: 10px;
+            color: var(--warn);
+            background: rgba(251, 191, 36, .07);
+            border: 1px solid rgba(251, 191, 36, .2);
+            border-radius: 3px;
+            padding: 2px 8px;
+            cursor: pointer;
+            transition: all .12s;
+        }
+
+        .suggestion:hover {
+            background: rgba(251, 191, 36, .15);
+        }
+
+        .empty-state {
+            padding: 40px;
+            text-align: center;
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <div class="logo">NAM-LSS <span>/ calibration editor v1</span></div>
+        <div class="header-actions">
+            <button class="btn" onclick="loadSampleData()">載入範例資料</button>
+            <button class="btn" onclick="resetAll()">Reset All</button>
+            <button class="btn" onclick="exportJSON()">Export JSON</button>
+            <button class="btn btn-primary" onclick="applyAndPreview()">套用並預覽</button>
+        </div>
+    </header>
+
+    <div class="layout">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-section">Layer 1 — Features</div>
+            <div id="feat-list"></div>
+            <div class="sidebar-section">Layer 2 — Output</div>
+            <div class="feat-item" id="output-nav" onclick="showOutput()">
+                Output Calibration
+                <span class="feat-badge" id="output-badge">0</span>
+            </div>
+        </aside>
+
+        <!-- Main -->
+        <main class="main">
+            <!-- Stats -->
+            <div class="stats-row">
+                <div class="stat-box">
+                    <div class="stat-label">Modified Features</div>
+                    <div class="stat-val" id="stat-feat">0</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Output Bins Adj.</div>
+                    <div class="stat-val" id="stat-out">0</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Max Feature Delta</div>
+                    <div class="stat-val" id="stat-maxd">—</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Total Adjustments</div>
+                    <div class="stat-val" id="stat-total">0</div>
+                </div>
+            </div>
+
+            <!-- Tab: Feature panel -->
+            <div id="panel-feature" class="tab-content active">
+                <div class="panel-title" id="feat-panel-title">← Select a feature</div>
+                <div id="feat-detail"></div>
+            </div>
+
+            <!-- Tab: Output panel -->
+            <div id="panel-output" class="tab-content">
+                <div class="panel-title">Layer 2 — Output Score Calibration</div>
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">Prediction Bin Adjustments</div>
+                            <div class="card-meta">對最終預測機率的各區間做直接調整（+delta 表示提高風險分數）</div>
+                        </div>
+                        <div style="display:flex;gap:8px">
+                            <button class="btn" onclick="autoCalibrate()">⚡ Auto-fill from Gap</button>
+                            <button class="btn btn-danger" onclick="resetOutputTable()">Reset</button>
+                        </div>
+                    </div>
+
+                    <div class="col-headers out-col-headers">
+                        <span>pred range</span>
+                        <span>n samples</span>
+                        <span>cal. gap</span>
+                        <span>adjustment</span>
+                        <span>delta</span>
+                        <span></span>
+                    </div>
+                    <div class="output-grid" id="output-grid"></div>
+                </div>
+            </div>
+
+            <!-- JSON Export panel -->
+            <div id="panel-json" class="tab-content">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">Calibration JSON Export</div>
+                        <button class="btn" onclick="copyJSON()">Copy</button>
+                    </div>
+                    <div class="json-box" id="json-content"></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        // ============================================================================
+        // State
+        // ============================================================================
+        const state = {
+            featureTable: {},   // fname → { bin_edges, deltas, bin_stats }
+            outputTable: {},    // { bin_edges, deltas, bin_stats }
+            activeFeature: null,
+            activePanel: 'feature'
+        };
+
+        // ============================================================================
+        // Sample Data Generator (simulates cal.export_for_ui())
+        // ============================================================================
+        function generateSampleData() {
+            const features = [
+                'Pre_HD_SBP', 'Age', 'IDH_N_7D', 'IDH_N_28D', 'Weight_Excess',
+                'UF_Rate_Per_Hour', 'SBP_Risk_Zone', 'Recent_IDH_Burden',
+                'Heart_Rate', 'Body_Temperature', 'Pre_HD_Weight', 'Dry_Weight',
+                'Target_UF_Volume', 'Blood_Flow_Rate', 'BMI_Proxy',
+                'Weight_Excess_Pct', 'Dialysate_Temperature'
+            ];
+
+            const featureTable = { feature_names: features, n_bins: 10, bin_edges: {}, deltas: {}, bin_stats: {} };
+
+            features.forEach(f => {
+                const edges = Array.from({ length: 11 }, (_, i) => -3 + i * 0.6);
+                featureTable.bin_edges[f] = edges;
+                featureTable.deltas[f] = new Array(10).fill(0);
+                featureTable.bin_stats[f] = Array.from({ length: 10 }, (_, b) => ({
+                    bin_idx: b,
+                    lo: edges[b],
+                    hi: edges[b + 1],
+                    n_samples: Math.floor(Math.random() * 400 + 50),
+                    mean_contribution: (Math.random() - 0.5) * 0.1,
+                    mean_label: Math.random() * 0.4 + 0.1,
+                    delta: 0
+                }));
+            });
+
+            const outEdges = Array.from({ length: 21 }, (_, i) => i * 0.05);
+            const outputTable = {
+                n_bins: 20,
+                bin_edges: outEdges,
+                deltas: new Array(20).fill(0),
+                bin_stats: Array.from({ length: 20 }, (_, b) => {
+                    const predMean = (b + 0.5) * 0.05;
+                    const gap = (Math.random() - 0.5) * 0.04;
+                    return {
+                        bin_idx: b, lo: outEdges[b], hi: outEdges[b + 1],
+                        n_samples: Math.floor(Math.random() * 200 + 20),
+                        mean_pred: predMean,
+                        mean_label: predMean + gap,
+                        calibration_gap: gap,
+                        delta: 0
+                    };
+                })
+            };
+
+            return { feature_table: featureTable, output_table: outputTable };
+        }
+
+        // ============================================================================
+        // Init
+        // ============================================================================
+        function loadSampleData() {
+            const data = generateSampleData();
+            state.featureTable = data.feature_table;
+            state.outputTable = data.output_table;
+            renderSidebar();
+            renderOutputGrid();
+            updateStats();
+            showFeature(state.featureTable.feature_names[0]);
+            toast('✓ Sample data loaded');
+        }
+
+        // ============================================================================
+        // Sidebar
+        // ============================================================================
+        function renderSidebar() {
+            const list = document.getElementById('feat-list');
+            list.innerHTML = '';
+            state.featureTable.feature_names.forEach(fname => {
+                const modified = state.featureTable.deltas[fname]?.some(d => d !== 0);
+                const count = state.featureTable.deltas[fname]?.filter(d => d !== 0).length || 0;
+                const div = document.createElement('div');
+                div.className = 'feat-item' + (state.activeFeature === fname ? ' active' : '');
+                div.id = 'nav-' + fname;
+                div.onclick = () => showFeature(fname);
+                div.innerHTML = `
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px">${fname}</span>
+      <span class="feat-badge ${modified ? 'modified' : ''}">${count || ''}</span>`;
+                list.appendChild(div);
+            });
+        }
+
+        // ============================================================================
+        // Feature Panel
+        // ============================================================================
+        function showFeature(fname) {
+            state.activeFeature = fname;
+            state.activePanel = 'feature';
+            document.getElementById('panel-feature').classList.add('active');
+            document.getElementById('panel-output').classList.remove('active');
+            document.getElementById('panel-json').classList.remove('active');
+            document.getElementById('output-nav').classList.remove('active');
+
+            document.querySelectorAll('.feat-item').forEach(el => el.classList.remove('active'));
+            const nav = document.getElementById('nav-' + fname);
+            if (nav) nav.classList.add('active');
+
+            document.getElementById('feat-panel-title').textContent = `Layer 1 — ${fname}`;
+
+            const stats = state.featureTable.bin_stats[fname];
+            const deltas = state.featureTable.deltas[fname];
+            const maxN = Math.max(...stats.map(s => s.n_samples));
+
+            let html = `
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">${fname}</div>
+          <div class="card-meta">${stats.length} bins · contribution-space adjustment</div>
+        </div>
+        <button class="btn btn-danger" onclick="resetFeature('${fname}')">Reset Feature</button>
+      </div>
+      <div class="col-headers feat-col-headers">
+        <span>contribution range</span>
+        <span>sample density</span>
+        <span>mean label</span>
+        <span>adjustment (delta)</span>
+        <span></span>
+      </div>
+      <div class="bin-grid">`;
+
+            stats.forEach((s, b) => {
+                const d = deltas[b];
+                const modified = d !== 0;
+                const barW = Math.round((s.n_samples / maxN) * 100);
+                const labelPct = Math.round(s.mean_label * 100);
+                const dClass = d > 0 ? 'delta-pos' : d < 0 ? 'delta-neg' : 'delta-zero';
+                const dStr = d === 0 ? '0.000' : (d > 0 ? '+' : '') + d.toFixed(3);
+
+                html += `
+      <div class="bin-row ${modified ? 'modified' : ''}" id="binrow-${fname}-${b}">
+        <span class="bin-range">[${s.lo.toFixed(2)}, ${s.hi.toFixed(2)}]</span>
+        <div class="bin-bar-wrap">
+          <div class="bin-bar-base" style="width:${barW}%"></div>
+          <span class="bin-bar-label">${s.n_samples}</span>
+        </div>
+        <span class="bin-n" style="color:${labelColor(s.mean_label)}">${labelPct}%</span>
+        <div class="slider-wrap">
+          <input type="range" min="-0.2" max="0.2" step="0.005"
+            value="${d}"
+            oninput="onFeatSlider('${fname}',${b},this.value)"
+            style="width:100%">
+        </div>
+        <span class="delta-val ${dClass}" id="dval-${fname}-${b}">${dStr}</span>
+        <button class="reset-bin" onclick="resetBin('${fname}',${b})" title="Reset bin">✕</button>
+      </div>`;
+            });
+
+            html += `</div></div>`;
+            document.getElementById('feat-detail').innerHTML = html;
+        }
+
+        function labelColor(v) {
+            if (v > 0.4) return 'var(--neg)';
+            if (v > 0.25) return 'var(--warn)';
+            return 'var(--pos)';
+        }
+
+        function onFeatSlider(fname, b, val) {
+            const v = parseFloat(val);
+            state.featureTable.deltas[fname][b] = v;
+            state.featureTable.bin_stats[fname][b].delta = v;
+            const dv = document.getElementById(`dval-${fname}-${b}`);
+            if (dv) {
+                dv.textContent = v === 0 ? '0.000' : (v > 0 ? '+' : '') + v.toFixed(3);
+                dv.className = 'delta-val ' + (v > 0 ? 'delta-pos' : v < 0 ? 'delta-neg' : 'delta-zero');
+            }
+            const row = document.getElementById(`binrow-${fname}-${b}`);
+            if (row) row.classList.toggle('modified', v !== 0);
+            updateStats();
+            renderSidebar();
+            // Re-highlight active
+            const nav = document.getElementById('nav-' + fname);
+            if (nav) nav.classList.add('active');
+        }
+
+        function resetBin(fname, b) {
+            state.featureTable.deltas[fname][b] = 0;
+            state.featureTable.bin_stats[fname][b].delta = 0;
+            showFeature(fname);
+            updateStats();
+        }
+
+        function resetFeature(fname) {
+            state.featureTable.deltas[fname] = state.featureTable.deltas[fname].map(() => 0);
+            state.featureTable.bin_stats[fname].forEach(s => s.delta = 0);
+            showFeature(fname);
+            updateStats();
+            renderSidebar();
+            toast(`Reset: ${fname}`);
+        }
+
+        // ============================================================================
+        // Output Panel
+        // ============================================================================
+        function showOutput() {
+            state.activePanel = 'output';
+            document.getElementById('panel-feature').classList.remove('active');
+            document.getElementById('panel-output').classList.add('active');
+            document.getElementById('panel-json').classList.remove('active');
+            document.querySelectorAll('.feat-item').forEach(el => el.classList.remove('active'));
+            document.getElementById('output-nav').classList.add('active');
+        }
+
+        function renderOutputGrid() {
+            const stats = state.outputTable.bin_stats;
+            const deltas = state.outputTable.deltas;
+            const maxN = Math.max(...stats.map(s => s.n_samples));
+            let html = '';
+
+            stats.forEach((s, b) => {
+                const d = deltas[b];
+                const modified = d !== 0;
+                const gapClass = s.calibration_gap > 0.005 ? 'gap-pos' : s.calibration_gap < -0.005 ? 'gap-neg' : '';
+                const dClass = d > 0 ? 'delta-pos' : d < 0 ? 'delta-neg' : 'delta-zero';
+                const dStr = d === 0 ? '0.000' : (d > 0 ? '+' : '') + d.toFixed(3);
+                const gapStr = (s.calibration_gap > 0 ? '+' : '') + s.calibration_gap.toFixed(3);
+                const barW = Math.round((s.n_samples / maxN) * 100);
+
+                // Show auto suggestion if gap > threshold
+                const showSug = Math.abs(s.calibration_gap) > 0.01 && d === 0;
+                const sugVal = (s.calibration_gap * 0.5).toFixed(3);
+
+                html += `
+      <div class="output-row ${modified ? 'modified' : ''}" id="outrow-${b}">
+        <span class="bin-range">[${s.lo.toFixed(2)}, ${s.hi.toFixed(2)}]</span>
+        <span class="bin-n">${s.n_samples}</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="bin-bar-wrap" style="flex:1">
+            <div class="bin-bar-base" style="width:${barW}%"></div>
+          </div>
+          <span class="gap-val ${gapClass}">${gapStr}</span>
+          ${showSug ? `<span class="suggestion" onclick="applySuggestion(${b},${sugVal})">⚡ ${(sugVal > 0 ? '+' : '') + sugVal}</span>` : ''}
+        </div>
+        <div class="slider-wrap">
+          <input type="range" min="-0.15" max="0.15" step="0.005"
+            value="${d}"
+            oninput="onOutputSlider(${b},this.value)"
+            style="width:100%">
+        </div>
+        <span class="delta-val ${dClass}" id="odval-${b}">${dStr}</span>
+        <button class="reset-bin" onclick="resetOutputBin(${b})" title="Reset">✕</button>
+      </div>`;
+            });
+
+            document.getElementById('output-grid').innerHTML = html;
+        }
+
+        function onOutputSlider(b, val) {
+            const v = parseFloat(val);
+            state.outputTable.deltas[b] = v;
+            state.outputTable.bin_stats[b].delta = v;
+            const dv = document.getElementById(`odval-${b}`);
+            if (dv) {
+                dv.textContent = v === 0 ? '0.000' : (v > 0 ? '+' : '') + v.toFixed(3);
+                dv.className = 'delta-val ' + (v > 0 ? 'delta-pos' : v < 0 ? 'delta-neg' : 'delta-zero');
+            }
+            const row = document.getElementById(`outrow-${b}`);
+            if (row) row.classList.toggle('modified', v !== 0);
+            updateStats();
+        }
+
+        function resetOutputBin(b) {
+            state.outputTable.deltas[b] = 0;
+            state.outputTable.bin_stats[b].delta = 0;
+            renderOutputGrid();
+            updateStats();
+        }
+
+        function resetOutputTable() {
+            state.outputTable.deltas = state.outputTable.deltas.map(() => 0);
+            state.outputTable.bin_stats.forEach(s => s.delta = 0);
+            renderOutputGrid();
+            updateStats();
+            toast('Output table reset');
+        }
+
+        function autoCalibrate() {
+            state.outputTable.bin_stats.forEach((s, b) => {
+                if (s.n_samples > 10) {
+                    const d = s.calibration_gap * 0.5;
+                    state.outputTable.deltas[b] = parseFloat(d.toFixed(4));
+                    s.delta = state.outputTable.deltas[b];
+                }
+            });
+            renderOutputGrid();
+            updateStats();
+            toast('⚡ Auto-calibrated from gap');
+        }
+
+        function applySuggestion(b, val) {
+            state.outputTable.deltas[b] = val;
+            state.outputTable.bin_stats[b].delta = val;
+            renderOutputGrid();
+            updateStats();
+        }
+
+        // ============================================================================
+        // Stats & Utils
+        // ============================================================================
+        function updateStats() {
+            let modFeat = 0, maxD = 0, total = 0;
+            if (state.featureTable.feature_names) {
+                state.featureTable.feature_names.forEach(f => {
+                    const nz = (state.featureTable.deltas[f] || []).filter(d => d !== 0);
+                    if (nz.length) modFeat++;
+                    total += nz.length;
+                    nz.forEach(d => { if (Math.abs(d) > maxD) maxD = Math.abs(d); });
+                });
+            }
+            const outNZ = (state.outputTable.deltas || []).filter(d => d !== 0);
+            total += outNZ.length;
+            outNZ.forEach(d => { if (Math.abs(d) > maxD) maxD = Math.abs(d); });
+
+            document.getElementById('stat-feat').textContent = modFeat;
+            document.getElementById('stat-out').textContent = outNZ.length;
+            document.getElementById('stat-maxd').textContent = modFeat + outNZ.length > 0 ? ('+' + maxD.toFixed(3)) : '—';
+            document.getElementById('stat-total').textContent = total;
+
+            const outBadge = document.getElementById('output-badge');
+            if (outBadge) outBadge.textContent = outNZ.length || '';
+            if (outBadge) outBadge.className = 'feat-badge' + (outNZ.length ? ' modified' : '');
+        }
+
+        function resetAll() {
+            if (!confirm('Reset ALL calibration adjustments?')) return;
+            if (state.featureTable.feature_names) {
+                state.featureTable.feature_names.forEach(f => {
+                    state.featureTable.deltas[f] = (state.featureTable.deltas[f] || []).map(() => 0);
+                    (state.featureTable.bin_stats[f] || []).forEach(s => s.delta = 0);
+                });
+            }
+            if (state.outputTable.deltas) {
+                state.outputTable.deltas = state.outputTable.deltas.map(() => 0);
+                (state.outputTable.bin_stats || []).forEach(s => s.delta = 0);
+            }
+            renderSidebar();
+            renderOutputGrid();
+            updateStats();
+            if (state.activeFeature) showFeature(state.activeFeature);
+            toast('All adjustments reset');
+        }
+
+        function applyAndPreview() {
+            const modified = [];
+            if (state.featureTable.feature_names) {
+                state.featureTable.feature_names.forEach(f => {
+                    const nz = (state.featureTable.deltas[f] || []).filter(d => d !== 0);
+                    if (nz.length) modified.push(`${f}: ${nz.length} bins`);
+                });
+            }
+            const outNZ = (state.outputTable.deltas || []).filter(d => d !== 0).length;
+            if (outNZ) modified.push(`Output: ${outNZ} bins`);
+            toast(`✓ Applied — ${modified.length ? modified.join(', ') : 'no changes'}`);
+        }
+
+        // ============================================================================
+        // JSON Export
+        // ============================================================================
+        function exportJSON() {
+            const data = {
+                version: 'nam_cal_v1',
+                feature_table: state.featureTable,
+                output_table: state.outputTable,
+                exported_at: new Date().toISOString()
+            };
+            const json = JSON.stringify(data, null, 2);
+            document.getElementById('json-content').textContent = json;
+            document.getElementById('panel-feature').classList.remove('active');
+            document.getElementById('panel-output').classList.remove('active');
+            document.getElementById('panel-json').classList.add('active');
+            document.querySelectorAll('.feat-item').forEach(el => el.classList.remove('active'));
+            document.getElementById('output-nav').classList.remove('active');
+            toast('JSON ready');
+        }
+
+        function copyJSON() {
+            const txt = document.getElementById('json-content').textContent;
+            navigator.clipboard.writeText(txt).then(() => toast('Copied to clipboard'));
+        }
+
+        // ============================================================================
+        // Toast
+        // ============================================================================
+        function toast(msg) {
+            const el = document.getElementById('toast');
+            el.textContent = msg;
+            el.classList.add('show');
+            setTimeout(() => el.classList.remove('show'), 2000);
+        }
+
+        // Init
+        loadSampleData();
+    </script>
+</body>
+
+</html>
