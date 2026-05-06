@@ -1215,16 +1215,33 @@ function computeMetrics(yTrue, yProb) {
     ece += Math.abs(avgConf - avgAcc) * mask.length / n;
   }
 
-  // Confidence-filtered (using probability as confidence proxy)
+  // Confidence-filtered (inline — no recursion)
   const confMetrics = {};
   for (const [label, pct] of [['all',1.0],['top80pct',0.8],['top60pct',0.6]]) {
     const cutoff = pct < 1 ? [...yProb].sort((a,b)=>b-a)[Math.floor(yProb.length*(1-pct))] : -Infinity;
     const idx = yProb.map((p,i) => p >= cutoff ? i : -1).filter(i => i >= 0);
+    if (idx.length < 10) { confMetrics[label] = null; continue; }
     const yt2 = idx.map(i => yTrue[i]);
     const yp2 = idx.map(i => yProb[i]);
-    if (idx.length < 10) { confMetrics[label] = null; continue; }
-    const sub = computeMetrics(yt2, yp2);
-    confMetrics[label] = { ...sub, coverage: idx.length / n, n: idx.length };
+    const n2 = yt2.length;
+    // AUROC
+    let pos2=[], neg2=[];
+    for(let i=0;i<n2;i++) (yt2[i]===1?pos2:neg2).push(yp2[i]);
+    let conc2=0;
+    for(const p of pos2) for(const q of neg2){ if(p>q)conc2++; else if(p===q)conc2+=0.5; }
+    const auroc2 = pos2.length&&neg2.length ? conc2/(pos2.length*neg2.length) : 0;
+    // AUPRC
+    const sorted2 = yp2.map((p,i)=>[p,yt2[i]]).sort((a,b)=>b[0]-a[0]);
+    let tp2=0,fp2=0,pr2=0,pc2=1,auprc2=0;
+    for(const [p,y] of sorted2){
+      y===1?tp2++:fp2++;
+      const r=pos2.length?tp2/pos2.length:0, pc=tp2+fp2?tp2/(tp2+fp2):1;
+      auprc2+=(r-pr2)*(pc+pc2)/2; pr2=r; pc2=pc;
+    }
+    // Brier
+    const brier2 = yt2.reduce((s,y,i)=>s+(yp2[i]-y)**2,0)/n2;
+    confMetrics[label] = { auroc:auroc2, auprc:auprc2, brier:brier2,
+                           coverage: n2/n, n: n2 };
   }
 
   return { auroc, auprc, brier, ece, confidence_filtered: confMetrics };
