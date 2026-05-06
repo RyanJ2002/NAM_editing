@@ -466,15 +466,26 @@ function buildPanel(fname, fdata) {
   const range = (Math.max(...fdata.x_original) - Math.min(...fdata.x_original)).toFixed(1);
   const modCount = (S.userDeltas[S.fold]?.[fname] ?? []).filter(d=>d!==0).length;
 
-  // Build bin rows
+  // Use adaptive bins if available, else uniform
+  const adaptiveBins = fdata.adaptive_bins || null;
+  const _BINS = S._overrideBins || (adaptiveBins ? adaptiveBins.length : BINS);
+
   let binRows = '';
-  const _BINS = S._overrideBins || BINS;
-for (let b = 0; b < _BINS; b++) {
-    const i0 = b * binSize;
-    const i1 = Math.min(i0 + binSize - 1, npts - 1);
-    const xLo = fdata.x_original[i0]?.toFixed(2) ?? '—';
-    const xHi = fdata.x_original[i1]?.toFixed(2) ?? '—';
-    const yMean = fdata.y_mean.slice(i0, i1+1).reduce((a,b)=>a+b,0) / (i1-i0+1);
+  for (let b = 0; b < _BINS; b++) {
+    let i0, i1, xLo, xHi, yMean, gradBadge = '';
+    if (adaptiveBins && !S._overrideBins) {
+      const ab = adaptiveBins[b];
+      i0 = ab.lo_idx; i1 = ab.hi_idx;
+      xLo = ab.x_lo.toFixed(2); xHi = ab.x_hi.toFixed(2);
+      yMean = ab.y_mean_avg;
+      gradBadge = `<span style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-left:6px" title="gradient">∇${ab.gradient.toFixed(4)}</span>`;
+    } else {
+      const bs = Math.floor(npts / _BINS);
+      i0 = b * bs; i1 = Math.min(i0 + bs - 1, npts - 1);
+      xLo = fdata.x_original[i0]?.toFixed(2) ?? '—';
+      xHi = fdata.x_original[i1]?.toFixed(2) ?? '—';
+      yMean = fdata.y_mean.slice(i0, i1+1).reduce((a,c)=>a+c,0) / (i1-i0+1);
+    }
     const delta = getDelta(fname, b);
     const yFinal = yMean + delta;
     const yClass = yFinal > 0.002 ? 'y-pos' : yFinal < -0.002 ? 'y-neg' : 'y-zero';
@@ -483,7 +494,7 @@ for (let b = 0; b < _BINS; b++) {
 
     binRows += `
     <tr class="bin-row-tr" id="brow-${b}">
-      <td><span class="x-range">[${xLo}, ${xHi}]</span></td>
+      <td><span class="x-range">[${xLo}, ${xHi}]</span>${gradBadge}</td>
       <td><span class="y-val ${yClass}">${yFinal > 0 ? '+' : ''}${yFinal.toFixed(4)}</span></td>
       <td>
         <div class="delta-input-wrap">
@@ -500,7 +511,7 @@ for (let b = 0; b < _BINS; b++) {
   <div class="feat-header">
     <div>
       <div class="feat-title">${fname}</div>
-      <div class="feat-meta">Fold ${S.fold} · ${fdata.x_original.length} scan points · peak |contrib| = ${peakContrib}</div>
+      <div class="feat-meta">Fold ${S.fold} · ${fdata.x_original.length} pts · peak=${peakContrib} · ${adaptiveBins && !S._overrideBins ? '<span style="color:var(--accent)">adaptive '+adaptiveBins.length+' bins</span>' : 'uniform '+_BINS+' bins'}</div>
     </div>
     <div class="feat-actions">
       <button class="btn btn-sm" onclick="resetFeature('${fname}')">Reset</button>
