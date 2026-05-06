@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NAM-LSS · Feature Shape Editor</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-annotation/3.0.1/chartjs-plugin-annotation.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap');
 
@@ -450,6 +451,31 @@ function selectFeature(fname) {
   panel.innerHTML = buildPanel(fname, fdata);
 
   renderChart(fname, fdata);
+  // Compute relative widths now that DOM is ready
+  if (S._pendingRelWidth) {
+    const { fname: fn, fdata: fd, effectiveBins: eb } = S._pendingRelWidth;
+    const npts2 = fd.x_original.length;
+    const totalRange = fd.x_original[npts2-1] - fd.x_original[0];
+    const uniformWidth = totalRange / eb;
+    const ab2 = fd.adaptive_bins;
+    for (let b = 0; b < eb; b++) {
+      const el = document.getElementById(`relw-${b}`);
+      if (!el) continue;
+      let binRange;
+      if (ab2 && !S._overrideBins) {
+        binRange = Math.abs(ab2[b].x_hi - ab2[b].x_lo);
+      } else {
+        binRange = uniformWidth;
+      }
+      const ratio = binRange / uniformWidth;
+      const pct = (ratio * 100).toFixed(0);
+      const color = ratio < 0.8 ? '#fbbf24' : ratio > 1.2 ? '#5a6580' : '#3b4a60';
+      el.textContent = `${pct}%`;
+      el.style.color = color;
+      el.title = `${binRange.toFixed(2)} vs uniform ${uniformWidth.toFixed(2)}`;
+    }
+    S._pendingRelWidth = null;
+  }
 }
 
 function buildPanel(fname, fdata) {
@@ -497,6 +523,9 @@ function buildPanel(fname, fdata) {
       <td><span class="x-range">[${xLo}, ${xHi}]</span>${gradBadge}</td>
       <td><span class="y-val ${yClass}">${yFinal > 0 ? '+' : ''}${yFinal.toFixed(4)}</span></td>
       <td>
+        <span id="relw-${b}" style="font-family:var(--mono);font-size:10px"></span>
+      </td>
+      <td>
         <div class="delta-input-wrap">
           <input type="range" min="-0.15" max="0.15" step="0.005" value="${delta}"
             oninput="onDelta('${fname}',${b},this.value)">
@@ -506,6 +535,9 @@ function buildPanel(fname, fdata) {
       </td>
     </tr>`;
   }
+
+  // Will compute relative widths after render
+  S._pendingRelWidth = { fname, fdata, effectiveBins };
 
   return `
   <div class="feat-header">
@@ -531,6 +563,8 @@ function buildPanel(fname, fdata) {
       <span><span class="legend-dot" style="background:#58a6ff;height:2px"></span>Original shape</span>
       <span><span class="legend-dot" style="background:#3fb950;height:2px"></span>After adjustment</span>
       <span><span class="legend-dot" style="background:rgba(88,166,255,.2);height:8px;border-radius:2px"></span>±1σ (ensemble)</span>
+      <span><span class="legend-dot" style="background:rgba(88,166,255,0.4);height:2px;border-top:2px dashed rgba(88,166,255,0.4)"></span>Uniform bins</span>
+      <span><span class="legend-dot" style="background:rgba(251,191,36,0.6);height:2px"></span>Adaptive bins</span>
     </div>
     <div class="chart-wrap"><canvas id="shape-chart"></canvas></div>
   </div>
@@ -556,6 +590,7 @@ function buildPanel(fname, fdata) {
       <thead><tr>
         <th>x range (original)</th>
         <th>contribution (adjusted)</th>
+        <th>rel. width</th>
         <th>delta slider</th>
       </tr></thead>
       <tbody>${binRows}</tbody>
@@ -596,11 +631,46 @@ function renderChart(fname, fdata) {
   const ctx = document.getElementById('shape-chart');
   if (!ctx) return;
 
+  const npts    = fdata.x_original.length;
   const xLabels = fdata.x_original.map(v => v.toFixed(2));
   const yOrig   = fdata.y_mean;
   const yAdj    = computeAdjusted(fdata, fname);
   const yUpper  = fdata.y_mean.map((y,i) => y + (fdata.y_std[i] ?? 0));
   const yLower  = fdata.y_mean.map((y,i) => y - (fdata.y_std[i] ?? 0));
+
+  // Build vertical line annotations for bin boundaries
+  const annotations = {};
+  const adaptiveBins = fdata.adaptive_bins || null;
+  const _BINS = S._overrideBins || (adaptiveBins ? adaptiveBins.length : BINS);
+  const uniformBinSize = Math.floor(npts / _BINS);
+
+  // Uniform bin boundaries (blue dashed)
+  for (let b = 1; b < _BINS; b++) {
+    const idx = b * uniformBinSize;
+    if (idx < npts) {
+      annotations[`uniform_${b}`] = {
+        type: 'line', xMin: xLabels[idx], xMax: xLabels[idx],
+        borderColor: 'rgba(88,166,255,0.25)', borderWidth: 1,
+        borderDash: [4, 4],
+        label: { display: false }
+      };
+    }
+  }
+
+  // Adaptive bin boundaries (orange solid) — only if adaptive data exists
+  if (adaptiveBins && !S._overrideBins) {
+    adaptiveBins.forEach((ab, b) => {
+      if (b === 0) return;
+      const idx = ab.lo_idx;
+      if (idx < npts) {
+        annotations[`adaptive_${b}`] = {
+          type: 'line', xMin: xLabels[idx], xMax: xLabels[idx],
+          borderColor: 'rgba(251,191,36,0.5)', borderWidth: 1.5,
+          label: { display: false }
+        };
+      }
+    });
+  }
 
   S.chart = new Chart(ctx, {
     type: 'line',
@@ -633,6 +703,7 @@ function renderChart(fname, fdata) {
       interaction:{mode:'index',intersect:false},
       plugins:{
         legend:{display:false},
+        annotation:{ annotations },
         tooltip:{
           backgroundColor:'#1f2336',
           titleColor:'#dde4f0',
