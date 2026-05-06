@@ -237,6 +237,41 @@ input[type=range]::-webkit-slider-thumb{
 .upload-zone:hover{border-color:var(--accent)}
 .upload-zone input{display:none}
 
+/* ── PATIENT PREDICTION ── */
+.patient-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.75);
+  display:none;align-items:center;justify-content:center;z-index:600;
+}
+.patient-overlay.show{display:flex}
+.patient-box{
+  background:var(--surf);border:1px solid var(--border2);border-radius:10px;
+  padding:28px 32px;width:780px;max-height:90vh;overflow-y:auto;
+}
+.patient-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px}
+.feat-input-row{display:flex;flex-direction:column;gap:4px}
+.feat-input-label{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.06em}
+.feat-input-field{
+  background:var(--surf2);border:1px solid var(--border2);color:var(--text);
+  font-family:var(--mono);font-size:12px;padding:6px 10px;border-radius:4px;outline:none;
+  transition:border-color .15s;
+}
+.feat-input-field:focus{border-color:var(--accent)}
+.risk-result{
+  background:var(--surf2);border:1px solid var(--border2);border-radius:8px;
+  padding:20px;margin-top:16px;text-align:center;
+}
+.risk-score{font-family:var(--mono);font-size:48px;font-weight:700;margin:8px 0}
+.risk-score.low{color:var(--pos)}
+.risk-score.mid{color:var(--warn)}
+.risk-score.high{color:var(--neg)}
+.risk-label{font-size:13px;color:var(--muted)}
+.contrib-bars{margin-top:16px}
+.contrib-row{display:flex;align-items:center;gap:10px;margin-bottom:4px;font-family:var(--mono);font-size:11px}
+.contrib-name{width:160px;text-align:right;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.contrib-bar-wrap{flex:1;height:12px;background:var(--bg);border-radius:2px;overflow:hidden}
+.contrib-bar{height:100%;border-radius:2px;transition:width .3s}
+.contrib-val{width:60px;text-align:left}
+
 /* scrollbar */
 ::-webkit-scrollbar{width:5px}
 ::-webkit-scrollbar-track{background:transparent}
@@ -251,6 +286,7 @@ input[type=range]::-webkit-slider-thumb{
   <div class="topbar-right">
     <button class="btn btn-ghost btn-sm" onclick="showLoadOverlay()">📂 Load JSON</button>
     <button class="btn btn-ghost btn-sm" onclick="showMetrics()">📊 Import Metrics</button>
+    <button class="btn btn-ghost btn-sm" onclick="showPatient()">🏥 Predict Patient</button>
     <button class="btn btn-sm" onclick="resetAllDeltas()">Reset All</button>
     <button class="btn btn-sm" onclick="showExportPanel()">Export ▾</button>
     <button class="btn btn-accent btn-sm" onclick="downloadJSON()">⬇ Download JSON</button>
@@ -299,6 +335,44 @@ input[type=range]::-webkit-slider-thumb{
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- PATIENT PREDICTION OVERLAY -->
+<div class="patient-overlay" id="patient-overlay" onclick="if(event.target===this)closePatient()">
+  <div class="patient-box">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <div>
+        <div style="font-size:16px;font-weight:600">Patient Risk Prediction</div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:2px">
+          輸入病人特徵值，即時計算 IDH 風險（查表推論）
+        </div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-sm" onclick="loadSamplePatient()">Sample</button>
+        <button class="btn btn-sm" onclick="clearPatient()">Clear</button>
+        <button class="btn btn-sm" onclick="closePatient()">✕</button>
+      </div>
+    </div>
+
+    <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:12px;letter-spacing:.08em;text-transform:uppercase">
+      Base Features
+    </div>
+    <div class="patient-grid" id="patient-inputs-base"></div>
+    <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin:12px 0;letter-spacing:.08em;text-transform:uppercase">
+      Engineered Features <span style="color:var(--border2)">(auto-computed if blank)</span>
+    </div>
+    <div class="patient-grid" id="patient-inputs-eng"></div>
+
+    <button class="btn btn-accent" style="width:100%;margin-top:16px;padding:10px"
+      onclick="runPatientPrediction()">⚡ Calculate Risk</button>
+
+    <div class="risk-result" id="risk-result" style="display:none">
+      <div class="risk-label">IDH Risk Score (Fold <span id="risk-fold">1</span>)</div>
+      <div class="risk-score" id="risk-score">—</div>
+      <div class="risk-label" id="risk-level">—</div>
+      <div class="contrib-bars" id="contrib-bars"></div>
+    </div>
+  </div>
+</div>
 
 <!-- METRICS OVERLAY -->
 <div class="metrics-overlay" id="metrics-overlay" onclick="if(event.target===this)closeMetrics()">
@@ -1150,6 +1224,171 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 });
+
+// ══════════════════════════════════════════════════════════════
+// PATIENT PREDICTION
+// ══════════════════════════════════════════════════════════════
+const BASE_FEATS = ['Sex','Age','IDH_N_7D','IDH_N_28D','Pre_HD_SBP','Start_DBP',
+  'Heart_Rate','Respiratory_Rate','Body_Temperature','Pre_HD_Weight','Dry_Weight',
+  'Target_UF_Volume','UF_BW_Perc','Blood_Flow_Rate','Dialysate_Flow_Rate',
+  'Dialysate_Temperature','Estimated_UF_Volume'];
+const ENG_FEATS = ['Weight_Excess','Weight_Excess_Pct','UF_Rate_Per_Hour',
+  'SBP_Risk_Zone','Recent_IDH_Burden','BMI_Proxy'];
+
+function showPatient() {
+  document.getElementById('patient-overlay').classList.add('show');
+  if (!document.getElementById('patient-inputs-base').children.length) buildPatientInputs();
+}
+function closePatient() {
+  document.getElementById('patient-overlay').classList.remove('show');
+}
+
+function buildPatientInputs() {
+  const makeInput = (f, container) => {
+    const div = document.createElement('div');
+    div.className = 'feat-input-row';
+    div.innerHTML = `<label class="feat-input-label">${f}</label>
+      <input class="feat-input-field" id="pi-${f}" type="number" step="any" placeholder="—">`;
+    document.getElementById(container).appendChild(div);
+  };
+  BASE_FEATS.forEach(f => makeInput(f, 'patient-inputs-base'));
+  ENG_FEATS.forEach(f => makeInput(f, 'patient-inputs-eng'));
+}
+
+function getVal(f) {
+  const el = document.getElementById('pi-' + f);
+  return el && el.value !== '' ? parseFloat(el.value) : null;
+}
+
+function autoComputeEngineered() {
+  const w  = getVal('Pre_HD_Weight');
+  const dw = getVal('Dry_Weight');
+  const sbp = getVal('Pre_HD_SBP');
+  const uf  = getVal('Target_UF_Volume');
+  const n7  = getVal('IDH_N_7D');
+  const n28 = getVal('IDH_N_28D');
+  const age = getVal('Age');
+
+  const set = (f, v) => {
+    const el = document.getElementById('pi-' + f);
+    if (el && el.value === '' && v !== null && !isNaN(v)) el.value = v.toFixed(4);
+  };
+  if (w !== null && dw !== null) {
+    const we = w - dw;
+    set('Weight_Excess', we);
+    set('Weight_Excess_Pct', we / (dw + 1e-6));
+  }
+  if (uf !== null) set('UF_Rate_Per_Hour', uf / 4.0);
+  if (sbp !== null) set('SBP_Risk_Zone', 1.0 / (1.0 + Math.exp((sbp - 140) / 10.0)));
+  if (n7 !== null && n28 !== null) set('Recent_IDH_Burden', n7 / (n28 + 1.0));
+  if (w !== null && age !== null) set('BMI_Proxy', w / (age / 100.0 + 1.0));
+}
+
+function lookupContribution(fname, rawValue) {
+  // Find contribution from shape function by matching x_original
+  const fdata = S.data?.folds?.[S.fold]?.[fname];
+  if (!fdata) return 0;
+  const xOrig = fdata.x_original;
+  const yMean = fdata.y_mean;
+  const adaptiveBins = fdata.adaptive_bins;
+  const _BINS = adaptiveBins ? adaptiveBins.length : BINS;
+
+  // Find nearest x_original point
+  let bestIdx = 0, bestDist = Infinity;
+  for (let i = 0; i < xOrig.length; i++) {
+    const d = Math.abs(xOrig[i] - rawValue);
+    if (d < bestDist) { bestDist = d; bestIdx = i; }
+  }
+
+  // Get base contribution from shape function
+  const baseContrib = yMean[bestIdx];
+
+  // Add any user delta for this bin
+  let binIdx;
+  if (adaptiveBins) {
+    binIdx = adaptiveBins.length - 1;
+    for (let k = 0; k < adaptiveBins.length; k++) {
+      if (bestIdx <= adaptiveBins[k].hi_idx) { binIdx = k; break; }
+    }
+  } else {
+    const binSize = Math.floor(xOrig.length / _BINS);
+    binIdx = Math.min(Math.floor(bestIdx / binSize), _BINS - 1);
+  }
+  return baseContrib + getDelta(fname, binIdx);
+}
+
+function runPatientPrediction() {
+  if (!S.data) { toast('請先載入 shape_data.json'); return; }
+  autoComputeEngineered();
+
+  const allFeats = [...BASE_FEATS, ...ENG_FEATS];
+  const contribs = {};
+  let totalLogit = 0;
+
+  for (const f of allFeats) {
+    const v = getVal(f);
+    if (v === null) { toast(`請輸入 ${f}`); return; }
+    const c = lookupContribution(f, v);
+    contribs[f] = c;
+    totalLogit += c;
+  }
+
+  // Convert sum of contributions to probability (sigmoid)
+  const prob = 1 / (1 + Math.exp(-totalLogit * 10));
+  const pct  = (prob * 100).toFixed(1);
+
+  // Display result
+  const scoreEl = document.getElementById('risk-score');
+  scoreEl.textContent = pct + '%';
+  scoreEl.className = 'risk-score ' + (prob > 0.5 ? 'high' : prob > 0.3 ? 'mid' : 'low');
+  document.getElementById('risk-level').textContent =
+    prob > 0.5 ? '⚠ High Risk' : prob > 0.3 ? '⚡ Moderate Risk' : '✓ Low Risk';
+  document.getElementById('risk-fold').textContent = S.fold;
+
+  // Contribution bars
+  const sorted = Object.entries(contribs).sort((a,b) => Math.abs(b[1]) - Math.abs(a[1]));
+  const maxAbs = Math.max(...sorted.map(([,v]) => Math.abs(v)), 0.001);
+  let barsHTML = '<div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:8px;letter-spacing:.08em">TOP FEATURE CONTRIBUTIONS</div>';
+  for (const [f, c] of sorted.slice(0, 10)) {
+    const w   = (Math.abs(c) / maxAbs * 100).toFixed(1);
+    const col = c > 0 ? 'var(--neg)' : 'var(--pos)';
+    const sign = c > 0 ? '+' : '';
+    barsHTML += `<div class="contrib-row">
+      <span class="contrib-name">${f}</span>
+      <div class="contrib-bar-wrap">
+        <div class="contrib-bar" style="width:${w}%;background:${col}"></div>
+      </div>
+      <span class="contrib-val" style="color:${col}">${sign}${c.toFixed(4)}</span>
+    </div>`;
+  }
+  document.getElementById('contrib-bars').innerHTML = barsHTML;
+  document.getElementById('risk-result').style.display = 'block';
+}
+
+function loadSamplePatient() {
+  const sample = {
+    'Sex':0,'Age':65,'IDH_N_7D':2,'IDH_N_28D':5,
+    'Pre_HD_SBP':130,'Start_DBP':80,'Heart_Rate':75,
+    'Respiratory_Rate':16,'Body_Temperature':36.5,
+    'Pre_HD_Weight':68,'Dry_Weight':65,
+    'Target_UF_Volume':2.5,'UF_BW_Perc':0.038,
+    'Blood_Flow_Rate':300,'Dialysate_Flow_Rate':500,
+    'Dialysate_Temperature':36.5,'Estimated_UF_Volume':2.5
+  };
+  for (const [f, v] of Object.entries(sample)) {
+    const el = document.getElementById('pi-' + f);
+    if (el) el.value = v;
+  }
+  autoComputeEngineered();
+}
+
+function clearPatient() {
+  [...BASE_FEATS, ...ENG_FEATS].forEach(f => {
+    const el = document.getElementById('pi-' + f);
+    if (el) el.value = '';
+  });
+  document.getElementById('risk-result').style.display = 'none';
+}
 
 // Auto-load shape_data.json if available in same directory
 async function autoLoadJSON() {
