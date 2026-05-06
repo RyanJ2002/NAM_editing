@@ -384,7 +384,7 @@ function getDelta(fname, binIdx) {
 }
 function setDelta(fname, binIdx, val) {
   if (!S.userDeltas[S.fold]) S.userDeltas[S.fold] = {};
-  if (!S.userDeltas[S.fold][fname]) S.userDeltas[S.fold][fname] = new Array(BINS).fill(0);
+  if (!S.userDeltas[S.fold][fname]) S.userDeltas[S.fold][fname] = new Array(S._overrideBins || BINS).fill(0);
   S.userDeltas[S.fold][fname][binIdx] = val;
 }
 function isModified(fname) {
@@ -455,7 +455,7 @@ function selectFeature(fname) {
 function buildPanel(fname, fdata) {
   const npts = fdata.x_original.length;
   // Bin the data for the delta table
-  const binSize = Math.floor(npts / BINS);
+  const binSize = Math.floor(npts / (S._overrideBins || BINS));
 
   // Compute adjusted y
   const yAdj = computeAdjusted(fdata, fname);
@@ -468,7 +468,8 @@ function buildPanel(fname, fdata) {
 
   // Build bin rows
   let binRows = '';
-  for (let b = 0; b < BINS; b++) {
+  const _BINS = S._overrideBins || BINS;
+for (let b = 0; b < _BINS; b++) {
     const i0 = b * binSize;
     const i1 = Math.min(i0 + binSize - 1, npts - 1);
     const xLo = fdata.x_original[i0]?.toFixed(2) ?? '—';
@@ -529,7 +530,16 @@ function buildPanel(fname, fdata) {
         <div class="section-title">Bin-level Delta Adjustment</div>
         <div class="section-sub">調整每個 bin 的 contribution offset，即時更新上方圖形</div>
       </div>
-      <button class="btn btn-sm" onclick="resetFeature('${fname}')">Reset All Bins</button>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span style="font-family:var(--mono);font-size:11px;color:var(--muted)">Bins:</span>
+        <input type="number" min="3" max="50" value="${BINS}"
+          style="width:60px;background:var(--surf2);border:1px solid var(--border2);
+                 color:var(--text);font-family:var(--mono);font-size:12px;
+                 padding:3px 6px;border-radius:4px;outline:none"
+          onchange="onBinCountChange('${fname}', this.value)"
+          title="人工覆蓋 bin 數（3~50）">
+        <button class="btn btn-sm" onclick="resetFeature('${fname}')">Reset All Bins</button>
+      </div>
     </div>
     <table class="bin-table">
       <thead><tr>
@@ -563,9 +573,9 @@ function buildPanel(fname, fdata) {
 // ══════════════════════════════════════════════════════════════
 function computeAdjusted(fdata, fname) {
   const npts = fdata.x_original.length;
-  const binSize = Math.floor(npts / BINS);
+  const binSize = Math.floor(npts / (S._overrideBins || BINS));
   return fdata.y_mean.map((y, i) => {
-    const b = Math.min(Math.floor(i / binSize), BINS - 1);
+    const b = Math.min(Math.floor(i / binSize), (S._overrideBins || BINS) - 1);
     return y + getDelta(fname, b);
   });
 }
@@ -676,7 +686,7 @@ function onDelta(fname, binIdx, val) {
   const fdata = S.data?.folds?.[S.fold]?.[fname];
   if (fdata) {
     const npts = fdata.x_original.length;
-    const binSize = Math.floor(npts / BINS);
+    const binSize = Math.floor(npts / (S._overrideBins || BINS));
     const i0 = binIdx * binSize;
     const i1 = Math.min(i0 + binSize - 1, npts - 1);
     const yMean = fdata.y_mean.slice(i0, i1+1).reduce((a,b)=>a+b,0) / (i1-i0+1);
@@ -777,11 +787,11 @@ function exportFeatureCSV(fname) {
   const fdata = S.data?.folds?.[S.fold]?.[fname];
   if (!fdata) return;
   const npts = fdata.x_original.length;
-  const binSize = Math.floor(npts / BINS);
+  const binSize = Math.floor(npts / (S._overrideBins || BINS));
   const yAdj = computeAdjusted(fdata, fname);
   let csv = 'x_original,x_transformed,y_original,y_adjusted,y_std,delta_bin\n';
   for (let i = 0; i < npts; i++) {
-    const b = Math.min(Math.floor(i / binSize), BINS - 1);
+    const b = Math.min(Math.floor(i / binSize), (S._overrideBins || BINS) - 1);
     csv += `${fdata.x_original[i].toFixed(4)},${fdata.x_transformed[i].toFixed(4)},`
          + `${fdata.y_mean[i].toFixed(6)},${yAdj[i].toFixed(6)},`
          + `${fdata.y_std[i].toFixed(6)},${getDelta(fname, b).toFixed(4)}\n`;
