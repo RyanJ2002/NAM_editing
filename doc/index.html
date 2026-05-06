@@ -537,8 +537,7 @@ function buildPanel(fname, fdata) {
   }
 
   // Will compute relative widths after render
-  const _effectiveBins = _BINS;
-  S._pendingRelWidth = { fname, fdata, effectiveBins: _effectiveBins };
+  S._pendingRelWidth = { fname, fdata, effectiveBins: _BINS };
 
   return `
   <div class="feat-header">
