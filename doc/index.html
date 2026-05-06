@@ -212,6 +212,31 @@ input[type=range]::-webkit-slider-thumb{
 .stat-label{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
 .stat-val{font-family:var(--mono);font-size:18px;font-weight:600}
 
+/* ── METRICS PANEL ── */
+.metrics-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.75);
+  display:none;align-items:center;justify-content:center;z-index:600;
+}
+.metrics-overlay.show{display:flex}
+.metrics-box{
+  background:var(--surf);border:1px solid var(--border2);border-radius:10px;
+  padding:28px 32px;width:680px;max-height:85vh;overflow-y:auto;
+}
+.metrics-title{font-size:16px;font-weight:600;margin-bottom:4px}
+.metrics-sub{font-family:var(--mono);font-size:11px;color:var(--muted);margin-bottom:20px}
+.metrics-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+.metrics-card{background:var(--surf2);border:1px solid var(--border);border-radius:6px;padding:12px}
+.metrics-card .label{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.metrics-card .value{font-family:var(--mono);font-size:20px;font-weight:700}
+.metrics-card .value.good{color:var(--pos)}
+.metrics-card .value.warn{color:var(--warn)}
+.metrics-section{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:16px 0 8px}
+.conf-row{display:grid;grid-template-columns:100px repeat(4,1fr);gap:8px;padding:8px;background:var(--surf2);border-radius:4px;margin-bottom:4px;font-family:var(--mono);font-size:11px}
+.conf-row.header{color:var(--muted);font-size:9px;letter-spacing:.08em;text-transform:uppercase}
+.upload-zone{border:2px dashed var(--border2);border-radius:8px;padding:24px;text-align:center;cursor:pointer;transition:border-color .2s;margin-bottom:16px}
+.upload-zone:hover{border-color:var(--accent)}
+.upload-zone input{display:none}
+
 /* scrollbar */
 ::-webkit-scrollbar{width:5px}
 ::-webkit-scrollbar-track{background:transparent}
@@ -225,6 +250,7 @@ input[type=range]::-webkit-slider-thumb{
   <div class="brand">NAM-LSS <span>/ shape editor</span></div>
   <div class="topbar-right">
     <button class="btn btn-ghost btn-sm" onclick="showLoadOverlay()">📂 Load JSON</button>
+    <button class="btn btn-ghost btn-sm" onclick="showMetrics()">📊 Import Metrics</button>
     <button class="btn btn-sm" onclick="resetAllDeltas()">Reset All</button>
     <button class="btn btn-sm" onclick="showExportPanel()">Export ▾</button>
     <button class="btn btn-accent btn-sm" onclick="downloadJSON()">⬇ Download JSON</button>
@@ -273,6 +299,50 @@ input[type=range]::-webkit-slider-thumb{
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- METRICS OVERLAY -->
+<div class="metrics-overlay" id="metrics-overlay" onclick="if(event.target===this)closeMetrics()">
+  <div class="metrics-box">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
+      <div>
+        <div class="metrics-title">Model Performance Metrics</div>
+        <div class="metrics-sub" id="metrics-source">Upload a CSV or JSON inference file</div>
+      </div>
+      <button class="btn btn-sm" onclick="closeMetrics()">✕ Close</button>
+    </div>
+
+    <!-- Upload zone -->
+    <label class="upload-zone" id="metrics-drop">
+      <input type="file" accept=".csv,.json" id="metrics-file" onchange="handleMetricsFile(this)">
+      <div style="color:var(--muted);font-size:13px">
+        <div style="font-size:24px;margin-bottom:8px">📊</div>
+        <div>拖曳或點擊上傳 <strong style="color:var(--accent)">inference CSV 或 JSON</strong></div>
+        <div style="font-size:11px;margin-top:4px">欄位需含 Y_TRUE, PROBABILITY</div>
+      </div>
+    </label>
+
+    <!-- Main metrics -->
+    <div id="metrics-content" style="display:none">
+      <div class="metrics-grid">
+        <div class="metrics-card"><div class="label">AUROC</div><div class="value good" id="m-auroc">—</div></div>
+        <div class="metrics-card"><div class="label">AUPRC</div><div class="value good" id="m-auprc">—</div></div>
+        <div class="metrics-card"><div class="label">Brier Score</div><div class="value" id="m-brier">—</div></div>
+        <div class="metrics-card"><div class="label">ECE</div><div class="value" id="m-ece">—</div></div>
+      </div>
+      <div class="metrics-card" style="margin-bottom:16px">
+        <div class="label">N Samples</div>
+        <div style="font-family:var(--mono);font-size:14px" id="m-n">—</div>
+      </div>
+
+      <!-- Confidence filtered -->
+      <div class="metrics-section">Confidence-Filtered Results</div>
+      <div class="conf-row header">
+        <span>Threshold</span><span>AUROC</span><span>AUPRC</span><span>Brier</span><span>Coverage</span>
+      </div>
+      <div id="conf-rows"></div>
+    </div>
+  </div>
+</div>
 
 <script>
 // ══════════════════════════════════════════════════════════════
@@ -619,9 +689,21 @@ function buildPanel(fname, fdata) {
 // ══════════════════════════════════════════════════════════════
 function computeAdjusted(fdata, fname) {
   const npts = fdata.x_original.length;
-  const binSize = Math.floor(npts / (S._overrideBins || BINS));
+  const adaptiveBins = fdata.adaptive_bins || null;
+  const _BINS = S._overrideBins || (adaptiveBins ? adaptiveBins.length : BINS);
+
   return fdata.y_mean.map((y, i) => {
-    const b = Math.min(Math.floor(i / binSize), (S._overrideBins || BINS) - 1);
+    let b;
+    if (adaptiveBins && !S._overrideBins) {
+      // Find which adaptive bin this point belongs to
+      b = adaptiveBins.length - 1;
+      for (let k = 0; k < adaptiveBins.length; k++) {
+        if (i <= adaptiveBins[k].hi_idx) { b = k; break; }
+      }
+    } else {
+      const binSize = Math.floor(npts / _BINS);
+      b = Math.min(Math.floor(i / binSize), _BINS - 1);
+    }
     return y + getDelta(fname, b);
   });
 }
@@ -900,6 +982,174 @@ function toast(msg) {
   el.classList.add('show');
   setTimeout(() => el.classList.remove('show'), 2200);
 }
+
+// ══════════════════════════════════════════════════════════════
+// METRICS
+// ══════════════════════════════════════════════════════════════
+function showMetrics() {
+  document.getElementById('metrics-overlay').classList.add('show');
+}
+function closeMetrics() {
+  document.getElementById('metrics-overlay').classList.remove('show');
+}
+
+function handleMetricsFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const text = e.target.result;
+    if (file.name.endsWith('.json')) {
+      parseMetricsJSON(JSON.parse(text), file.name);
+    } else {
+      parseMetricsCSV(text, file.name);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function parseMetricsCSV(text, fname) {
+  const lines = text.trim().split('\n');
+  const headers = lines[0].split(',').map(h => h.trim());
+  const yTrueIdx = headers.indexOf('Y_TRUE');
+  const probIdx  = headers.indexOf('PROBABILITY');
+  if (yTrueIdx < 0 || probIdx < 0) {
+    alert('CSV 需要 Y_TRUE 和 PROBABILITY 欄位'); return;
+  }
+  const yTrue = [], yProb = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(',');
+    if (cols.length < 2) continue;
+    yTrue.push(parseFloat(cols[yTrueIdx]));
+    yProb.push(parseFloat(cols[probIdx]));
+  }
+  const metrics = computeMetrics(yTrue, yProb);
+  displayMetrics(metrics, fname, yTrue.length);
+}
+
+function parseMetricsJSON(data, fname) {
+  // Support fold metrics JSON from trainer
+  if (data.auroc !== undefined) {
+    displayMetrics(data, fname, data.n_samples || '—');
+    return;
+  }
+  // Support array format
+  if (Array.isArray(data)) {
+    const yTrue = data.map(d => d.y_true ?? d.Y_TRUE);
+    const yProb = data.map(d => d.probability ?? d.PROBABILITY);
+    const metrics = computeMetrics(yTrue, yProb);
+    displayMetrics(metrics, fname, yTrue.length);
+  }
+}
+
+function computeMetrics(yTrue, yProb) {
+  const n = yTrue.length;
+  // AUROC (Mann-Whitney)
+  let pos = [], neg = [];
+  for (let i = 0; i < n; i++) {
+    (yTrue[i] === 1 ? pos : neg).push(yProb[i]);
+  }
+  let concordant = 0;
+  for (const p of pos) for (const q of neg) {
+    if (p > q) concordant++;
+    else if (p === q) concordant += 0.5;
+  }
+  const auroc = pos.length && neg.length ? concordant / (pos.length * neg.length) : 0;
+
+  // AUPRC (trapezoidal)
+  const sorted = yProb.map((p,i) => [p, yTrue[i]]).sort((a,b) => b[0]-a[0]);
+  let tp = 0, fp = 0, prevRec = 0, prevPrec = 1, auprc = 0;
+  const totPos = pos.length;
+  for (const [p, y] of sorted) {
+    y === 1 ? tp++ : fp++;
+    const rec  = totPos ? tp / totPos : 0;
+    const prec = tp + fp ? tp / (tp + fp) : 1;
+    auprc += (rec - prevRec) * (prec + prevPrec) / 2;
+    prevRec = rec; prevPrec = prec;
+  }
+
+  // Brier
+  const brier = yTrue.reduce((s,y,i) => s + (yProb[i]-y)**2, 0) / n;
+
+  // ECE (15 bins)
+  let ece = 0;
+  for (let b = 0; b < 15; b++) {
+    const lo = b/15, hi = (b+1)/15;
+    const mask = yProb.map((p,i) => p >= lo && p < hi ? i : -1).filter(i => i >= 0);
+    if (!mask.length) continue;
+    const avgConf = mask.reduce((s,i) => s + yProb[i], 0) / mask.length;
+    const avgAcc  = mask.reduce((s,i) => s + yTrue[i], 0) / mask.length;
+    ece += Math.abs(avgConf - avgAcc) * mask.length / n;
+  }
+
+  // Confidence-filtered (using probability as confidence proxy)
+  const confMetrics = {};
+  for (const [label, pct] of [['all',1.0],['top80pct',0.8],['top60pct',0.6]]) {
+    const cutoff = pct < 1 ? [...yProb].sort((a,b)=>b-a)[Math.floor(yProb.length*(1-pct))] : -Infinity;
+    const idx = yProb.map((p,i) => p >= cutoff ? i : -1).filter(i => i >= 0);
+    const yt2 = idx.map(i => yTrue[i]);
+    const yp2 = idx.map(i => yProb[i]);
+    if (idx.length < 10) { confMetrics[label] = null; continue; }
+    const sub = computeMetrics(yt2, yp2);
+    confMetrics[label] = { ...sub, coverage: idx.length / n, n: idx.length };
+  }
+
+  return { auroc, auprc, brier, ece, confidence_filtered: confMetrics };
+}
+
+function displayMetrics(m, fname, n) {
+  document.getElementById('metrics-source').textContent = fname + ' · ' + n + ' samples';
+  document.getElementById('m-auroc').textContent = m.auroc?.toFixed(4) ?? '—';
+  document.getElementById('m-auprc').textContent = m.auprc?.toFixed(4) ?? '—';
+  document.getElementById('m-brier').textContent = m.brier?.toFixed(4) ?? '—';
+  document.getElementById('m-ece').textContent   = m.ece?.toFixed(4)   ?? '—';
+  document.getElementById('m-n').textContent     = n;
+
+  // Colour auroc/auprc
+  const auroc = parseFloat(m.auroc);
+  document.getElementById('m-auroc').className = 'value ' + (auroc > 0.85 ? 'good' : auroc > 0.7 ? 'warn' : '');
+  const auprc = parseFloat(m.auprc);
+  document.getElementById('m-auprc').className = 'value ' + (auprc > 0.5 ? 'good' : auprc > 0.3 ? 'warn' : '');
+
+  // Confidence rows
+  const cf = m.confidence_filtered || {};
+  let rows = '';
+  for (const [label, v] of Object.entries(cf)) {
+    if (!v) continue;
+    rows += `<div class="conf-row">
+      <span style="color:var(--accent)">${label}</span>
+      <span>${v.auroc?.toFixed(4) ?? '—'}</span>
+      <span>${v.auprc?.toFixed(4) ?? '—'}</span>
+      <span>${v.brier?.toFixed(4) ?? '—'}</span>
+      <span>${v.coverage ? (v.coverage*100).toFixed(0)+'%' : '—'}</span>
+    </div>`;
+  }
+  document.getElementById('conf-rows').innerHTML = rows || '<div style="color:var(--muted);font-size:12px;padding:8px">No confidence data</div>';
+  document.getElementById('metrics-content').style.display = 'block';
+  document.getElementById('metrics-drop').style.display = 'none';
+}
+
+// Drag-drop for metrics
+document.addEventListener('DOMContentLoaded', () => {
+  const mDrop = document.getElementById('metrics-drop');
+  if (!mDrop) return;
+  mDrop.addEventListener('dragover', e => { e.preventDefault(); mDrop.style.borderColor='var(--accent)'; });
+  mDrop.addEventListener('dragleave', () => { mDrop.style.borderColor=''; });
+  mDrop.addEventListener('drop', e => {
+    e.preventDefault(); mDrop.style.borderColor='';
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      const inp = document.getElementById('metrics-file');
+      // simulate file input
+      const reader = new FileReader();
+      reader.onload = ev => {
+        if (file.name.endsWith('.json')) parseMetricsJSON(JSON.parse(ev.target.result), file.name);
+        else parseMetricsCSV(ev.target.result, file.name);
+      };
+      reader.readAsText(file);
+    }
+  });
+});
 
 // Auto-load shape_data.json if available in same directory
 async function autoLoadJSON() {
