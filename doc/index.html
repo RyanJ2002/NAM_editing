@@ -395,6 +395,10 @@ input[type=range]::-webkit-slider-thumb{
       </div>
     </label>
 
+    <!-- Reupload -->
+    <div id="metrics-reupload" style="display:none;margin-bottom:12px">
+      <button class="btn btn-sm" onclick="resetMetrics()">⬆ Upload another file</button>
+    </div>
     <!-- Main metrics -->
     <div id="metrics-content" style="display:none">
       <div class="metrics-grid">
@@ -1066,6 +1070,13 @@ function showMetrics() {
 function closeMetrics() {
   document.getElementById('metrics-overlay').classList.remove('show');
 }
+function resetMetrics() {
+  document.getElementById('metrics-drop').style.display = 'block';
+  document.getElementById('metrics-content').style.display = 'none';
+  document.getElementById('metrics-reupload').style.display = 'none';
+  document.getElementById('metrics-source').textContent = 'Upload a CSV or JSON inference file';
+  document.getElementById('metrics-file').value = '';
+}
 
 function handleMetricsFile(input) {
   const file = input.files[0];
@@ -1277,6 +1288,7 @@ function displayMetrics(m, fname, n) {
   document.getElementById('conf-rows').innerHTML = rows || '<div style="color:var(--muted);font-size:12px;padding:8px">No confidence data</div>';
   document.getElementById('metrics-content').style.display = 'block';
   document.getElementById('metrics-drop').style.display = 'none';
+  document.getElementById('metrics-reupload').style.display = 'block';
 }
 
 // Drag-drop for metrics
