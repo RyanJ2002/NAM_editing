@@ -391,7 +391,7 @@ input[type=range]::-webkit-slider-thumb{
       <div style="color:var(--muted);font-size:13px">
         <div style="font-size:24px;margin-bottom:8px">📊</div>
         <div>拖曳或點擊上傳 <strong style="color:var(--accent)">inference CSV 或 JSON</strong></div>
-        <div style="font-size:11px;margin-top:4px">欄位需含 Y_TRUE, PROBABILITY</div>
+        <div style="font-size:11px;margin-top:4px">① inference CSV（含 Y_TRUE, PROBABILITY）<br>② 原始特徵 CSV（含 Y_TRUE + 特徵欄位，自動推論）<br>③ JSON 格式</div>
       </div>
     </label>
 
@@ -1087,18 +1087,77 @@ function parseMetricsCSV(text, fname) {
   const headers = lines[0].split(',').map(h => h.trim());
   const yTrueIdx = headers.indexOf('Y_TRUE');
   const probIdx  = headers.indexOf('PROBABILITY');
-  if (yTrueIdx < 0 || probIdx < 0) {
-    alert('CSV 需要 Y_TRUE 和 PROBABILITY 欄位'); return;
+
+  // Case A: already has PROBABILITY → direct metrics
+  if (yTrueIdx >= 0 && probIdx >= 0) {
+    const yTrue = [], yProb = [];
+    for (let i = 1; i < lines.length; i++) {
+      const cols = lines[i].split(',');
+      if (cols.length < 2) continue;
+      yTrue.push(parseFloat(cols[yTrueIdx]));
+      yProb.push(parseFloat(cols[probIdx]));
+    }
+    const metrics = computeMetrics(yTrue, yProb);
+    displayMetrics(metrics, fname, yTrue.length);
+    return;
   }
+
+  // Case B: raw feature CSV → run lookup inference first
+  if (!S.data) { alert('請先載入 shape_data.json'); return; }
+  const allFeats = [...BASE_FEATS, ...ENG_FEATS];
+  const missingFeats = allFeats.filter(f => !headers.includes(f) && f !== 'Weight_Excess'
+    && f !== 'Weight_Excess_Pct' && f !== 'UF_Rate_Per_Hour'
+    && f !== 'SBP_Risk_Zone' && f !== 'Recent_IDH_Burden' && f !== 'BMI_Proxy');
+
+  if (yTrueIdx < 0) { alert('CSV 需要 Y_TRUE 欄位'); return; }
+
   const yTrue = [], yProb = [];
+  let skipped = 0;
+
   for (let i = 1; i < lines.length; i++) {
     const cols = lines[i].split(',');
     if (cols.length < 2) continue;
-    yTrue.push(parseFloat(cols[yTrueIdx]));
-    yProb.push(parseFloat(cols[probIdx]));
+    const row = {};
+    headers.forEach((h, j) => { row[h] = parseFloat(cols[j]); });
+
+    // Auto-compute engineered features if missing
+    const w = row['Pre_HD_Weight'], dw = row['Dry_Weight'];
+    if (!isNaN(w) && !isNaN(dw)) {
+      const we = w - dw;
+      if (isNaN(row['Weight_Excess']))     row['Weight_Excess']     = we;
+      if (isNaN(row['Weight_Excess_Pct'])) row['Weight_Excess_Pct'] = we / (dw + 1e-6);
+    }
+    if (!isNaN(row['Target_UF_Volume']) && isNaN(row['UF_Rate_Per_Hour']))
+      row['UF_Rate_Per_Hour'] = row['Target_UF_Volume'] / 4.0;
+    if (!isNaN(row['Pre_HD_SBP']) && isNaN(row['SBP_Risk_Zone']))
+      row['SBP_Risk_Zone'] = 1.0 / (1.0 + Math.exp((row['Pre_HD_SBP'] - 140) / 10.0));
+    if (!isNaN(row['IDH_N_7D']) && !isNaN(row['IDH_N_28D']) && isNaN(row['Recent_IDH_Burden']))
+      row['Recent_IDH_Burden'] = row['IDH_N_7D'] / (row['IDH_N_28D'] + 1.0);
+    if (!isNaN(row['Pre_HD_Weight']) && !isNaN(row['Age']) && isNaN(row['BMI_Proxy']))
+      row['BMI_Proxy'] = row['Pre_HD_Weight'] / (row['Age'] / 100.0 + 1.0);
+
+    // Check all features available
+    const missing = allFeats.filter(f => isNaN(row[f]));
+    if (missing.length > 0) { skipped++; continue; }
+
+    // Lookup contributions
+    let totalLogit = 0;
+    for (const f of allFeats) {
+      totalLogit += lookupContribution(f, row[f]);
+    }
+    const prob = 1 / (1 + Math.exp(-totalLogit * 10));
+    yTrue.push(row['Y_TRUE']);
+    yProb.push(prob);
   }
+
+  if (yTrue.length === 0) {
+    alert('無法推論任何樣本，請確認欄位名稱正確\n需要: ' + BASE_FEATS.slice(0,5).join(', ') + '...'); return;
+  }
+  if (skipped > 0) toast(`⚠ 跳過 ${skipped} 筆缺值樣本`);
+
   const metrics = computeMetrics(yTrue, yProb);
-  displayMetrics(metrics, fname, yTrue.length);
+  displayMetrics(metrics, fname + ' (inferred)', yTrue.length);
+  toast(`✓ ${yTrue.length} 筆推論完成`);
 }
 
 function parseMetricsJSON(data, fname) {
